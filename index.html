@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Suivi Muscu - Frère</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { margin: 0; background-color: #0f0f0f; font-family: 'Segoe UI', sans-serif; color: white; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+    .container { max-width: 900px; width: 100%; background-color: #1a1a1a; padding: 20px; border-radius: 20px; box-shadow: 0 0 20px rgba(255,255,255,0.1); }
+    .btn { background: #2e2e2e; border: 1px solid #555; border-radius: 10px; padding: 14px; color: white; width: 100%; margin-top: 15px; font-size: 16px; cursor: pointer; transition: background 0.2s ease; }
+    .btn:hover { background: #3a3a3a; }
+    input, select { background: #222; border: 1px solid #444; border-radius: 10px; padding: 8px; color: white; }
+    label { margin-top: 20px; display: block; font-weight: 600; font-size: 15px; }
+    .exo-block { background: #2b2b2b; padding: 15px; margin-bottom: 20px; border-radius: 12px; }
+    .exo-grid { display: flex; gap: 10px; margin-top: 10px; }
+    .serie-col { display: flex; flex-direction: column; background-color: #1e1e1e; border-radius: 10px; padding: 10px; text-align: center; width: 100px; }
+    .serie-col input { margin: 5px 0; }
+    .kanban { margin-top: 30px; }
+    .card { background: #333; padding: 12px; border-radius: 12px; margin-bottom: 15px; border-left: 5px solid #555; }
+    canvas { margin-top: 30px; background: white; border-radius: 10px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2 style="text-align:center">Suivi Muscu</h2>
+    <label for="session">Choisir une séance :</label>
+    <select id="session">
+      <option value="A">Upper A</option>
+      <option value="B">Upper B</option>
+      <option value="C">Upper C</option>
+    </select>
+    <label for="date">Date :</label>
+    <input type="date" id="date" />
+    <div id="exos"></div>
+    <button class="btn" onclick="saveData()">Valider la séance</button>
+    <div class="kanban" id="kanban"></div>
+    <div style="margin-top: 40px;">
+      <label for="chart-mode">Afficher la progression :</label>
+      <select id="chart-mode" onchange="switchGraph()">
+        <option value="total">Volume total par séance</option>
+        <option value="exo">Volume par exercice</option>
+      </select>
+    </div>
+    <select id="graph-select" style="margin-top: 20px; display:none;" onchange="updateGraph()"></select>
+    <canvas id="totalChart" width="400" height="200"></canvas>
+    <canvas id="progressChart" width="400" height="200" style="display:none;"></canvas>
+  </div>
+  <script>
+    const LS_HISTORY = "muscu_history_frere";
+    const LS_DRAFT = "muscu_draft_frere";
+    const session = document.getElementById("session");
+    const exosDiv = document.getElementById("exos");
+    const dateInput = document.getElementById("date");
+    const exercices = {
+      A: ["Chest press", "Tirage vertical", "Développé haltères", "Tirage unilatéral poulie", "Curl biceps assis", "Extension triceps barre", "Élévations latérales"],
+      B: ["Développé militaire", "Écarté poulie", "Tirage horizontal poulie", "Tirage unilatéral", "Extension triceps corde (haut)", "Curl marteau poulie", "Élévations latérales"],
+      C: ["Dips / Chest press", "Tirage vertical (variante)", "Dév. haltères", "Écarté poulie", "Extension triceps barre", "Curl biceps assis", "Élévations latérales"]
+    };
+    const repsObjectif = {"Chest press":"8-10","Tirage vertical":"6-8","Développé haltères":"6-8","Tirage unilatéral poulie":"6-8","Curl biceps assis":"10","Extension triceps barre":"10","Développé militaire":"8","Tirage horizontal poulie":"8","Tirage unilatéral":"8","Extension triceps corde (haut)":"10","Curl marteau poulie":"10","Dips / Chest press":"8","Tirage vertical (variante)":"6-8","Dév. haltères":"6-8","Écarté poulie":"8","Élévations latérales":"échec"};
+    const nbSeriesByExercise = {"Chest press":2,"Tirage vertical":3,"Développé haltères":2,"Tirage unilatéral poulie":2,"Curl biceps assis":3,"Extension triceps barre":3,"Développé militaire":2,"Tirage horizontal poulie":2,"Tirage unilatéral":2,"Extension triceps corde (haut)":2,"Curl marteau poulie":3,"Dips / Chest press":2,"Tirage vertical (variante)":2,"Dév. haltères":2,"Écarté poulie":2,"Élévations latérales":3};
+    session.addEventListener("change", () => { renderExos(); renderKanban(); });
+    function renderExos() {
+      const selected = session.value;
+      const list = exercices[selected];
+      const history = JSON.parse(localStorage.getItem(LS_HISTORY)) || [];
+      const lastSession = [...history].reverse().find(s => s.session === selected);
+      const lastValues = {};
+      if (lastSession) {
+        lastSession.exos.forEach(e => {
+          lastValues[e.nom] = e.series.map(s => ({ kg: s.kg, reps: s.reps }));
+        });
+      }
+      exosDiv.innerHTML = "";
+      list.forEach(exo => {
+        const repsText = repsObjectif[exo] || "";
+        const block = document.createElement("div");
+        block.className = "exo-block";
+        block.innerHTML = `<label>${exo} <span style='font-weight:normal;font-size:12px;'>(Objectif: ${repsText} reps)</span></label>`;
+        const grid = document.createElement("div");
+        grid.className = "exo-grid";
+        const series = nbSeriesByExercise[exo] || 3;
+        for (let i = 1; i <= series; i++) {
+          const col = document.createElement("div");
+          col.className = "serie-col";
+          const lastKg = (lastValues[exo] && lastValues[exo][i - 1]?.kg) ? `${lastValues[exo][i - 1].kg} kg` : "kg";
+          const lastReps = (lastValues[exo] && lastValues[exo][i - 1]?.reps) ? `${lastValues[exo][i - 1].reps} reps` : "reps";
+          col.innerHTML = `<strong>Série ${i}</strong><input type='number' id='${exo}-kg-${i}' placeholder='${lastKg}'><input type='number' id='${exo}-reps-${i}' placeholder='${lastReps}'>`;
+          grid.appendChild(col);
+        }
+        block.appendChild(grid);
+        exosDiv.appendChild(block);
+      });
+      restoreDraft(); autoSaveInputs();
+    }
+    function autoSaveInputs() {
+      const inputs = document.querySelectorAll('input[type="number"]');
+      const draft = JSON.parse(localStorage.getItem(LS_DRAFT) || "{}");
+      inputs.forEach(input => {
+        if (draft[input.id]) input.value = draft[input.id];
+        input.addEventListener("input", () => {
+          draft[input.id] = input.value;
+          localStorage.setItem(LS_DRAFT, JSON.stringify(draft));
+        });
+      });
+    }
+    function restoreDraft() {
+      const draft = JSON.parse(localStorage.getItem(LS_DRAFT) || "{}");
+      Object.keys(draft).forEach(id => {
+        const input = document.getElementById(id);
+        if (input) input.value = draft[id];
+      });
+    }
+    function saveData() {
+      const sessionType = session.value;
+      const date = dateInput.value;
+      if (!date) return alert("Veuillez sélectionner une date.");
+      const list = exercices[sessionType];
+      const result = { date, session: sessionType, exos: [] };
+      list.forEach(exo => {
+        const seriesCount = nbSeriesByExercise[exo] || 3;
+        const series = [];
+        for (let i = 1; i <= seriesCount; i++) {
+          const kg = document.getElementById(`${exo}-kg-${i}`).value;
+          const reps = document.getElementById(`${exo}-reps-${i}`).value;
+          series.push({ kg, reps });
+        }
+        result.exos.push({ nom: exo, series });
+      });
+      let history = JSON.parse(localStorage.getItem(LS_HISTORY)) || [];
+      history.push(result);
+      localStorage.setItem(LS_HISTORY, JSON.stringify(history));
+      renderKanban();
+      renderTotalVolumeGraph();
+      updateGraphOptions();
+      switchGraph();
+      localStorage.removeItem(LS_DRAFT);
+    }
+    function renderKanban() {
+      const kanban = document.getElementById("kanban");
+      kanban.innerHTML = "";
+      const history = JSON.parse(localStorage.getItem(LS_HISTORY)) || [];
+      const sessionType = session.value;
+      const columns = [];
+      const filteredHistory = history.filter((s) => s.session === sessionType);
+      filteredHistory.forEach((s, i) => {
+        const exoHtml = s.exos.map(e => {
+          const sText = e.series.map((s, j) => `S${j + 1}: ${s.kg}kg x ${s.reps}r`).join("<br>");
+          return `<b>${e.nom}</b><br>${sText}<br><br>`;
+        }).join("");
+        columns.push(`<div class='card'><b>${s.date}</b><br>${exoHtml}</div>`);
+      });
+      const col = document.createElement("div");
+      col.innerHTML = `<h3 style='text-align:center'>Upper ${sessionType}</h3>` + columns.join("");
+      kanban.appendChild(col);
+    }
+    function switchGraph() {
+      const mode = document.getElementById("chart-mode").value;
+      const totalCanvas = document.getElementById("totalChart");
+      const exoCanvas = document.getElementById("progressChart");
+      const select = document.getElementById("graph-select");
+      if (mode === "total") {
+        totalCanvas.style.display = "block";
+        exoCanvas.style.display = "none";
+        select.style.display = "none";
+        renderTotalVolumeGraph();
+      } else {
+        totalCanvas.style.display = "none";
+        exoCanvas.style.display = "block";
+        select.style.display = "block";
+        updateGraphOptions();
+      }
+    }
+    function updateGraphOptions() {
+      const select = document.getElementById("graph-select");
+      const allExos = new Set();
+      const history = JSON.parse(localStorage.getItem(LS_HISTORY)) || [];
+      history.forEach(entry => {
+        entry.exos.forEach(e => allExos.add(e.nom));
+      });
+      select.innerHTML = "";
+      [...allExos].forEach(exo => {
+        const option = document.createElement("option");
+        option.value = exo;
+        option.textContent = exo;
+        select.appendChild(option);
+      });
+      if (select.value) updateGraph();
+    }
+    function updateGraph() {
+      const selectedExo = document.getElementById("graph-select").value;
+      const ctx = document.getElementById("progressChart").getContext("2d");
+      const history = JSON.parse(localStorage.getItem(LS_HISTORY)) || [];
+      const labels = [];
+      const moyennes = [];
+      history.forEach(entry => {
+        const exo = entry.exos.find(e => e.nom === selectedExo);
+        if (exo) {
+          let totalCharge = 0;
+          let totalSeries = 0;
+          exo.series.forEach(s => {
+            const kg = parseFloat(s.kg || 0);
+            if (!isNaN(kg)) {
+              totalCharge += kg;
+              totalSeries += 1;
+            }
+          });
+          if (totalSeries > 0) {
+            labels.push(entry.date);
+            moyennes.push((totalCharge / totalSeries).toFixed(2));
+          }
+        }
+      });
+      if (window.myChart) window.myChart.destroy();
+      window.myChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [{
+            label: `Charge moyenne - ${selectedExo}`,
+            data: moyennes,
+            borderWidth: 2,
+            fill: false,
+            tension: 0.3
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: true }, title: { display: false } },
+          scales: { y: { beginAtZero: true }, x: { ticks: { autoSkip: true } } }
+        }
+      });
+    }
+    function renderTotalVolumeGraph() {
+      const ctx = document.getElementById("totalChart").getContext("2d");
+      const history = JSON.parse(localStorage.getItem(LS_HISTORY)) || [];
+      const labels = [];
+      const totals = [];
+      const backgroundColors = [];
+      history.forEach(entry => {
+        let total = 0;
+        entry.exos.forEach(e => {
+          total += e.series.reduce((acc, s) => acc + (parseFloat(s.kg || 0) * parseFloat(s.reps || 0)), 0);
+        });
+        labels.push(entry.date + " (Upper " + entry.session + ")");
+        const colorMap = { A: '#0074D9', B: '#2ECC40', C: '#FF4136' };
+        backgroundColors.push(colorMap[entry.session] || '#888');
+        totals.push(total);
+      });
+      if (window.totalChart) window.totalChart.destroy();
+      window.totalChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [{
+            label: 'Volume total par séance',
+            data: totals,
+            backgroundColor: backgroundColors
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: true }, title: { display: false } },
+          scales: { y: { beginAtZero: true } }
+        }
+      });
+    }
+    renderExos(); renderKanban(); switchGraph();
+  </script>
+</body>
+</html>
