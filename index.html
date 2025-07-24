@@ -155,6 +155,8 @@
     <button class='btn' onclick='deleteSession(${history.findIndex(h => h.date === s.date && h.session === s.session)})'>🗑 Supprimer</button>
   </div>
 `);
+      }); // 👈 cette accolade FERMANTE manquait ici !!
+
       const col = document.createElement("div");
       col.innerHTML = `<h3 style='text-align:center'>Upper ${sessionType}</h3>` + columns.join("");
       kanban.appendChild(col);
