@@ -148,8 +148,13 @@
           const sText = e.series.map((s, j) => `S${j + 1}: ${s.kg}kg x ${s.reps}r`).join("<br>");
           return `<b>${e.nom}</b><br>${sText}<br><br>`;
         }).join("");
-        columns.push(`<div class='card'><b>${s.date}</b><br>${exoHtml}</div>`);
-      });
+       columns.push(`
+  <div class='card'>
+    <b>${s.date}</b><br>
+    ${exoHtml}
+    <button class='btn' onclick='deleteSession(${history.findIndex(h => h.date === s.date && h.session === s.session)})'>🗑 Supprimer</button>
+  </div>
+`);
       const col = document.createElement("div");
       col.innerHTML = `<h3 style='text-align:center'>Upper ${sessionType}</h3>` + columns.join("");
       kanban.appendChild(col);
@@ -265,6 +270,15 @@
         }
       });
     }
+    function deleteSession(index) {
+  if (!confirm("Supprimer cette séance ?")) return;
+  const history = JSON.parse(localStorage.getItem(LS_HISTORY)) || [];
+  history.splice(index, 1);
+  localStorage.setItem(LS_HISTORY, JSON.stringify(history));
+  renderKanban();
+  renderTotalVolumeGraph();
+  updateGraphOptions();
+}
     renderExos(); renderKanban(); switchGraph();
   </script>
 </body>
